@@ -31,6 +31,16 @@ const getLocalDateString = (date) => {
 };
 
 /* 
+  Helper: Format a date string (YYYY-MM-DD) into a human-readable form.
+  For example, "2025-02-14" becomes "February 14, 2025 – Friday"
+*/
+const formatCalendarDate = (dateString) => {
+  const date = new Date(dateString + 'T00:00');
+  const dateOptions = { month: 'long', day: 'numeric', year: 'numeric' };
+  return date.toLocaleDateString('en-US', dateOptions);
+};
+
+/* 
   BOOK COVER COMPONENT 
   Animates on open (0° → –150°) and on close (reverse).
 */
@@ -366,7 +376,6 @@ function JournalSection() {
   // Instead of wrapping entire blocks on blur, we use our keyDown handler to force new input into a new span.
   // We still call this on blur to update the cache.
   const handleBlur = (e) => {
-    // You might choose to further refine the content here if needed.
     const newContent = contentRef.current.innerHTML;
     setJournalCache(prev => ({
       ...prev,
@@ -609,7 +618,9 @@ function JournalSection() {
   CALENDAR SECTION COMPONENT 
   Reads an optional ":date" parameter from the URL.
   The "Go to Journal for This Day" button navigates to /journal/{date}.
-  Calendar entries and the file upload button are centered.
+  The entire calendar section (calendar, new event fields, today's events, and upcoming events)
+  is now scrollable vertically.
+  Also, the heading is now formatted to be human readable.
 */
 function CalendarSection() {
   const navigate = useNavigate();
@@ -627,6 +638,32 @@ function CalendarSection() {
   const [monthlyEvents, setMonthlyEvents] = useState([]);
   const token = localStorage.getItem('token');
 
+  // Helper functions to fetch events
+  const fetchCalendarEvents = async () => {
+    const dateStr = getLocalDateString(selectedDate);
+    try {
+      const res = await axios.get(`http://localhost:5001/api/calendar?date=${dateStr}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setEvents(res.data);
+      setCalendarEntry(prev => ({ ...prev, date: dateStr }));
+    } catch (error) {
+      console.error('Error fetching calendar events:', error);
+    }
+  };
+
+  const fetchMonthlyEvents = async () => {
+    const month = getLocalDateString(selectedDate).slice(0, 7);
+    try {
+      const res = await axios.get(`http://localhost:5001/api/calendar/month?month=${month}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setMonthlyEvents(res.data);
+    } catch (error) {
+      console.error('Error fetching monthly events:', error);
+    }
+  };
+
   useEffect(() => {
     if (params.date) {
       setSelectedDate(new Date(params.date + 'T00:00'));
@@ -634,33 +671,10 @@ function CalendarSection() {
   }, [params.date]);
 
   useEffect(() => {
-    const fetchEvents = async () => {
-      try {
-        const dateStr = getLocalDateString(selectedDate);
-        const res = await axios.get(`http://localhost:5001/api/calendar?date=${dateStr}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setEvents(res.data);
-        setCalendarEntry(prev => ({ ...prev, date: dateStr }));
-      } catch (error) {
-        console.error('Error fetching calendar events:', error);
-      }
-    };
-    fetchEvents();
+    fetchCalendarEvents();
   }, [selectedDate, token]);
 
   useEffect(() => {
-    const fetchMonthlyEvents = async () => {
-      const month = getLocalDateString(selectedDate).slice(0, 7);
-      try {
-        const res = await axios.get(`http://localhost:5001/api/calendar/month?month=${month}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setMonthlyEvents(res.data);
-      } catch (error) {
-        console.error('Error fetching monthly events:', error);
-      }
-    };
     fetchMonthlyEvents();
   }, [selectedDate, token]);
 
@@ -679,11 +693,8 @@ function CalendarSection() {
       await axios.post('http://localhost:5001/api/calendar', calendarEntry, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      const res = await axios.get(`http://localhost:5001/api/calendar?date=${calendarEntry.date}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setEvents(res.data);
-      setCalendarEntry(prev => ({ ...prev, title: '', description: '' }));
+      await fetchCalendarEvents();
+      await fetchMonthlyEvents();
     } catch (error) {
       console.error('Error saving calendar event:', error);
     }
@@ -711,14 +722,16 @@ function CalendarSection() {
       await axios.delete(`http://localhost:5001/api/calendar/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setEvents(prev => prev.filter((event) => event._id !== id));
+      await fetchCalendarEvents();
+      await fetchMonthlyEvents();
     } catch (error) {
       console.error('Error deleting calendar event:', error);
     }
   };
 
   return (
-    <div className="text-center text-gray-800 h-full overflow-hidden">
+    // Make the outer container scrollable vertically with a fixed height (e.g. 80vh)
+    <div className="text-center text-gray-800" style={{ height: '80vh', overflowY: 'auto' }}>
       <h2 className="text-2xl font-semibold mb-2">Calendar</h2>
       {/* Jump-to-Journal button */}
       <div className="mb-4">
@@ -756,8 +769,10 @@ function CalendarSection() {
           Save Calendar Event
         </button>
       </form>
-      <div className="mb-4">
-        <h3 className="text-xl font-semibold mb-2">Events for {calendarEntry.date}</h3>
+      {/* Today's events container */}
+      <div className="mb-4 mx-auto" style={{ maxWidth: '350px', maxHeight: '300px', overflowY: 'auto' }}>
+        {/* Use the helper to format the date */}
+        <h3 className="text-xl font-semibold mb-2">Events for {formatCalendarDate(calendarEntry.date)}</h3>
         {events.length === 0 ? (
           <p>No events for this date.</p>
         ) : (
@@ -778,6 +793,7 @@ function CalendarSection() {
           ))
         )}
       </div>
+      {/* Upcoming events container */}
       <div className="mb-4">
         <Typography variant="h6" component="h3">
           Upcoming Events This Month
@@ -785,7 +801,7 @@ function CalendarSection() {
         {monthlyEvents.length === 0 ? (
           <Typography>No events scheduled for this month.</Typography>
         ) : (
-          <div>
+          <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
             {monthlyEvents.map((event) => (
               <div key={event._id} className="mb-2">
                 <Typography variant="body1">
@@ -801,7 +817,10 @@ function CalendarSection() {
 }
 
 /* 
-  GALLERY SECTION COMPONENT (unchanged, with centered file input)
+  GALLERY SECTION COMPONENT 
+  The gallery now displays images in a scrollable container (if there are many),
+  and each image has a delete button ("×") so that you can remove images.
+  We also added simple pagination: only a fixed number of images (e.g., 6) are shown per page.
 */
 function GallerySection() {
   const [imageFile, setImageFile] = useState(null);
@@ -809,18 +828,23 @@ function GallerySection() {
   const [images, setImages] = useState([]);
   const [selectedImage, setSelectedImage] = useState(null);
   const token = localStorage.getItem('token');
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const imagesPerPage = 6;
+
+  // Helper to fetch images.
+  const fetchImages = async () => {
+    try {
+      const res = await axios.get('http://localhost:5001/api/gallery', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setImages(res.data);
+    } catch (error) {
+      console.error('Error fetching gallery images:', error);
+    }
+  };
 
   useEffect(() => {
-    const fetchImages = async () => {
-      try {
-        const res = await axios.get('http://localhost:5001/api/gallery', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setImages(res.data);
-      } catch (error) {
-        console.error('Error fetching gallery images:', error);
-      }
-    };
     fetchImages();
   }, [token]);
 
@@ -841,16 +865,32 @@ function GallerySection() {
           'Content-Type': 'multipart/form-data'
         }
       });
-      const res = await axios.get('http://localhost:5001/api/gallery', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setImages(res.data);
+      await fetchImages();
       setImageFile(null);
       setDescription('');
+      // Reset to page 1 after upload
+      setCurrentPage(1);
     } catch (error) {
       console.error('Error uploading image:', error);
     }
   };
+
+  const deleteImage = async (id) => {
+    try {
+      await axios.delete(`http://localhost:5001/api/gallery/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      await fetchImages();
+    } catch (error) {
+      console.error('Error deleting image:', error);
+    }
+  };
+
+  // Calculate the current images to display.
+  const indexOfLastImage = currentPage * imagesPerPage;
+  const indexOfFirstImage = indexOfLastImage - imagesPerPage;
+  const currentImages = images.slice(indexOfFirstImage, indexOfLastImage);
+  const totalPages = Math.ceil(images.length / imagesPerPage);
 
   return (
     <div className="text-center text-gray-800">
@@ -881,17 +921,45 @@ function GallerySection() {
           Upload Image
         </button>
       </form>
-      <div className="grid grid-cols-2 gap-4">
-        {images.map((img) => (
+      {/* Wrap the images grid in a scrollable container */}
+      <div style={{ maxHeight: '500px', overflowY: 'auto' }} className="grid grid-cols-2 gap-4">
+        {currentImages.map((img) => (
           <div 
             key={img._id} 
-            className="border border-gray-200 rounded p-2 cursor-pointer"
+            className="relative border border-gray-200 rounded p-2 cursor-pointer"
             onClick={() => setSelectedImage(img.url)}
           >
             <img src={img.url} alt={img.description || 'Gallery image'} className="w-full h-auto" />
             {img.description && <p className="mt-2 text-sm">{img.description}</p>}
+            <button 
+              onClick={(e) => { e.stopPropagation(); deleteImage(img._id); }}
+              className="absolute top-0 right-0 bg-white text-red-500 rounded-full px-1"
+              title="Delete image"
+            >
+              ×
+            </button>
           </div>
         ))}
+      </div>
+      {/* Pagination controls */}
+      <div className="mt-4 flex justify-center items-center space-x-4">
+        <Button
+          variant="outlined"
+          disabled={currentPage === 1}
+          onClick={() => setCurrentPage(currentPage - 1)}
+        >
+          Previous
+        </Button>
+        <Typography variant="subtitle1">
+          Page {currentPage} of {totalPages}
+        </Typography>
+        <Button
+          variant="outlined"
+          disabled={currentPage === totalPages}
+          onClick={() => setCurrentPage(currentPage + 1)}
+        >
+          Next
+        </Button>
       </div>
       <AnimatePresence>
         {selectedImage && (
