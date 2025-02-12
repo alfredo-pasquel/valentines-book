@@ -10,8 +10,9 @@ export function Login({ onLogin }) {
     e.preventDefault();
     try {
       const res = await axios.post('http://localhost:5001/api/auth/login', { username, password });
-      // Save the JWT token in localStorage or via a context provider
+      // Save both the JWT token and the username in localStorage
       localStorage.setItem('token', res.data.token);
+      localStorage.setItem('username', res.data.username);
       onLogin(); // Callback to signal successful login
     } catch (err) {
       setError('Invalid credentials');
@@ -21,10 +22,7 @@ export function Login({ onLogin }) {
 
   return (
     <div className="min-h-screen bg-pink-100 flex flex-col items-center justify-center p-4">
-      <form
-        onSubmit={handleLogin}
-        className="bg-white p-8 rounded shadow-lg w-full max-w-md"
-      >
+      <form onSubmit={handleLogin} className="bg-white p-8 rounded shadow-lg w-full max-w-md">
         <h2 className="text-2xl font-bold mb-4">Login</h2>
         {error && <p className="text-red-500 mb-2">{error}</p>}
         <input
@@ -43,10 +41,7 @@ export function Login({ onLogin }) {
           className="w-full border border-gray-300 p-2 rounded mb-4"
           required
         />
-        <button
-          type="submit"
-          className="w-full bg-pink-500 text-white p-2 rounded"
-        >
+        <button type="submit" className="w-full bg-pink-500 text-white p-2 rounded">
           Login
         </button>
         <p className="mt-4 text-center">
@@ -72,15 +67,15 @@ export function Register({ onRegister }) {
 
   const handleRegister = async (e) => {
     e.preventDefault();
-    // Only allow registration if the PIN is correct (e.g. 4266 or 1608)
     if (pin !== '4266' && pin !== '1608') {
       setError('Incorrect PIN. Cannot create account.');
       return;
     }
     try {
       const res = await axios.post('http://localhost:5001/api/auth/register', { username, password, pin });
-      // Registration successful – you might automatically log in the user:
+      // Save both the JWT token and the username in localStorage
       localStorage.setItem('token', res.data.token);
+      localStorage.setItem('username', res.data.username);
       onRegister(); // Callback for successful registration
     } catch (err) {
       setError('Registration failed');
@@ -90,10 +85,7 @@ export function Register({ onRegister }) {
 
   return (
     <div className="min-h-screen bg-pink-100 flex flex-col items-center justify-center p-4">
-      <form
-        onSubmit={handleRegister}
-        className="bg-white p-8 rounded shadow-lg w-full max-w-md"
-      >
+      <form onSubmit={handleRegister} className="bg-white p-8 rounded shadow-lg w-full max-w-md">
         <h2 className="text-2xl font-bold mb-4">Create Account</h2>
         {error && <p className="text-red-500 mb-2">{error}</p>}
         <input
@@ -120,10 +112,7 @@ export function Register({ onRegister }) {
           className="w-full border border-gray-300 p-2 rounded mb-4"
           required
         />
-        <button
-          type="submit"
-          className="w-full bg-pink-500 text-white p-2 rounded"
-        >
+        <button type="submit" className="w-full bg-pink-500 text-white p-2 rounded">
           Register
         </button>
         <p className="mt-4 text-center">

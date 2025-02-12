@@ -3,7 +3,8 @@ import React, {
   useState,
   useEffect,
   useRef,
-  useLayoutEffect
+  useLayoutEffect,
+  useMemo
 } from 'react';
 import {
   motion,
@@ -43,7 +44,10 @@ function BookCover({ onComplete, mode = 'open' }) {
   return (
     <motion.div
       className="absolute inset-0 cursor-pointer bg-contain bg-center bg-no-repeat"
-      style={{ transformOrigin: 'left center', backgroundImage: "url('/book.png')" }}
+      style={{
+        transformOrigin: 'left center',
+        backgroundImage: "url('/book.png')"
+      }}
       initial={mode === 'open' ? { rotateY: 0 } : { rotateY: -150 }}
       animate={trigger ? (mode === 'open' ? { rotateY: -150 } : { rotateY: 0 }) : {}}
       transition={{ duration: 1, ease: 'easeInOut' }}
@@ -176,17 +180,19 @@ export default function App({ onLogout }) {
 
 /* 
   JOURNAL SECTION COMPONENT 
-  • Uses a continuous “page‐turn” animation with two layers:
-      – The bottom layer shows the preview page (read–only).
-      – The top (editable) layer shows the current (committed) page and rotates based on the drag.
-  • This fixes the issue where the page turn only happened after releasing the drag and
-    prevents the text from disappearing in the textbox after a page change.
+  Uses a continuous “page‐turn” animation with two layers:
+    - The bottom layer shows the preview page (read–only).
+    - The top (editable) layer shows the current (committed) page and rotates based on the drag.
+  It includes:
+    • Extra CSS (clipPath, willChange, translateZ(0)) to help prevent ghost/shadow artifacts.
+    • A keydown handler that, when the user types in a region not marked with their user, splits the text and forces new input to be wrapped in a span with the proper color.
 */
 function JournalSection() {
   const navigate = useNavigate();
   const params = useParams();
   const token = localStorage.getItem('token');
-  const currentUser = localStorage.getItem('username') || 'alfredo';
+  const currentUser = localStorage.getItem('username');
+  console.log(`current user ${currentUser}`);
   const defaultColor = currentUser === 'alfredo' ? 'blue' : 'purple';
 
   const initialDate = getLocalDateString(new Date());
@@ -197,10 +203,9 @@ function JournalSection() {
     params.date ? new Date(params.date + 'T00:00').getDate() - 1 : initialIndex
   );
   const [journalCache, setJournalCache] = useState({});
-  // Track focus so we don't update content while the user is editing.
   const [isFocused, setIsFocused] = useState(false);
 
-  // For the page-turn drag, we now use a motion value.
+  // For the page-turn drag, we use a motion value.
   const pageTurnValue = useMotionValue(0);
   const rotateY = useTransform(pageTurnValue, (v) => v * -90);
   const pageOpacity = useTransform(pageTurnValue, (v) => 1 - v);
@@ -212,9 +217,9 @@ function JournalSection() {
     }
   }, [params.date]);
 
-  // Compute dates for the month.
-  const getMonthDates = (dateStr) => {
-    const date = new Date(dateStr + 'T00:00');
+  // Memoize the month dates so they don’t change on every render.
+  const memoizedMonthDates = useMemo(() => {
+    const date = new Date(committedDate + 'T00:00');
     const year = date.getFullYear();
     const month = date.getMonth();
     const dates = [];
@@ -225,17 +230,15 @@ function JournalSection() {
       dates.push(getLocalDateString(newDate));
     }
     return dates;
-  };
-  const monthDates = getMonthDates(committedDate);
-  // The previewDate (the page underneath) is based on the continuously updated selectedIndex.
-  const previewDate = monthDates[selectedIndex] || committedDate;
+  }, [committedDate]);
 
-  // Refs for date bar and content.
+  // The previewDate (the page underneath) is based on the continuously updated selectedIndex.
+  const previewDate = memoizedMonthDates[selectedIndex] || committedDate;
+
+  // Refs for the date bar and the content.
   const dateBarRef = useRef(null);
   const dragX = useMotionValue(0);
-  const buttonWidth = 60,
-    buttonGap = 8,
-    totalSpace = buttonWidth + buttonGap;
+  const buttonWidth = 60, buttonGap = 8, totalSpace = buttonWidth + buttonGap;
   const contentRef = useRef(null);
 
   useLayoutEffect(() => {
@@ -254,7 +257,7 @@ function JournalSection() {
           headers: { Authorization: `Bearer ${token}` }
         })
         .then((res) => {
-          setJournalCache((prev) => ({
+          setJournalCache(prev => ({
             ...prev,
             [committedDate]: res.data.content || ''
           }));
@@ -262,15 +265,15 @@ function JournalSection() {
         .catch((err) => console.error('Error fetching journal entry:', err));
     }
     // Also prefetch the next day's content.
-    if (selectedIndex < monthDates.length - 1) {
-      const nextDate = monthDates[selectedIndex + 1];
+    if (selectedIndex < memoizedMonthDates.length - 1) {
+      const nextDate = memoizedMonthDates[selectedIndex + 1];
       if (!journalCache[nextDate]) {
         axios
           .get(`http://localhost:5001/api/journal?date=${nextDate}`, {
             headers: { Authorization: `Bearer ${token}` }
           })
           .then((res) => {
-            setJournalCache((prev) => ({
+            setJournalCache(prev => ({
               ...prev,
               [nextDate]: res.data.content || ''
             }));
@@ -278,9 +281,10 @@ function JournalSection() {
           .catch((err) => console.error('Error fetching next journal entry:', err));
       }
     }
-  }, [committedDate, selectedIndex, token, journalCache, monthDates]);
+  }, [committedDate, selectedIndex, token, memoizedMonthDates]);
+  // Note: journalCache is intentionally omitted from dependencies.
 
-  // **UPDATED:** When not focused, update the top (editable) page content using committedDate.
+  // When not focused, update the top (editable) page content using committedDate.
   useEffect(() => {
     if (contentRef.current && !isFocused) {
       contentRef.current.innerHTML = journalCache[committedDate] || '';
@@ -304,7 +308,7 @@ function JournalSection() {
   const handleDateBarDragEnd = (event, info) => {
     const currentPageTurn = pageTurnValue.get();
     let newIndex = selectedIndex;
-    if (currentPageTurn > 0.5 && selectedIndex < monthDates.length - 1) {
+    if (currentPageTurn > 0.5 && selectedIndex < memoizedMonthDates.length - 1) {
       newIndex = selectedIndex + 1;
     }
     if (dateBarRef.current) {
@@ -314,37 +318,128 @@ function JournalSection() {
     }
     // Animate the page turn back to 0.
     animate(pageTurnValue, 0, { type: 'spring', stiffness: 300, damping: 30 });
-    setCommittedDate(monthDates[newIndex]);
+    setCommittedDate(memoizedMonthDates[newIndex]);
     setSelectedIndex(newIndex);
-    navigate('/journal/' + monthDates[newIndex]);
+    navigate('/journal/' + memoizedMonthDates[newIndex]);
   };
 
-  // When user types, update journalCache.
+  // On input, update the journalCache without annotation (to avoid disturbing the caret).
   const handleInput = (e) => {
     const newContent = e.target.innerHTML;
-    // Save the content for the current committed page.
-    setJournalCache((prev) => ({ ...prev, [committedDate]: newContent }));
-    // (Auto-save logic could be added here.)
+    setJournalCache(prev => ({
+      ...prev,
+      [committedDate]: newContent
+    }));
   };
 
-  // Formatting helpers.
+  // NEW: On keyDown, if the caret is in a container whose data-user does not match the current user,
+  // then split the content and force insertion into a new span with the proper color.
+  const handleKeyDown = (e) => {
+    // Ignore control keys
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const selection = window.getSelection();
+    if (selection.rangeCount > 0) {
+      let range = selection.getRangeAt(0);
+      let container = range.startContainer;
+      if (container.nodeType === Node.TEXT_NODE) {
+        container = container.parentNode;
+      }
+      if (container.getAttribute("data-user") !== currentUser) {
+        // Create a new span for the current user.
+        const newSpan = document.createElement("span");
+        newSpan.setAttribute("data-user", currentUser);
+        newSpan.style.color = currentUser === 'alfredo' ? 'blue' : 'purple';
+        // Insert a zero-width space so that the caret can be positioned inside.
+        newSpan.innerHTML = "&#8203;";
+        range.deleteContents();
+        range.insertNode(newSpan);
+        // Move caret inside the new span after the zero-width space.
+        const newRange = document.createRange();
+        newRange.setStart(newSpan.firstChild, 1);
+        newRange.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+      }
+    }
+  };
+
+  // Instead of wrapping entire blocks on blur, we use our keyDown handler to force new input into a new span.
+  // We still call this on blur to update the cache.
+  const handleBlur = (e) => {
+    // You might choose to further refine the content here if needed.
+    const newContent = contentRef.current.innerHTML;
+    setJournalCache(prev => ({
+      ...prev,
+      [committedDate]: newContent
+    }));
+    setIsFocused(false);
+  };
+
+  // AUTO–SAVE EFFECT:
+  useEffect(() => {
+    const contentToSave = journalCache[committedDate];
+    if (contentToSave !== undefined) {
+      const timer = setTimeout(() => {
+        axios
+          .post(
+            'http://localhost:5001/api/journal',
+            { date: committedDate, content: contentToSave },
+            { headers: { Authorization: `Bearer ${token}` } }
+          )
+          .then((res) => {
+            console.log('Auto-saved successfully', res.data);
+          })
+          .catch((err) => console.error('Error auto-saving journal entry:', err));
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [committedDate, token, journalCache[committedDate]]);
+
+  // POLLING EFFECT:
+  useEffect(() => {
+    const pollInterval = setInterval(() => {
+      axios
+        .get(`http://localhost:5001/api/journal?date=${committedDate}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        .then((res) => {
+          const fetchedContent = res.data.content || '';
+          if (!isFocused && fetchedContent !== journalCache[committedDate]) {
+            setJournalCache(prev => ({
+              ...prev,
+              [committedDate]: fetchedContent
+            }));
+            if (contentRef.current) {
+              contentRef.current.innerHTML = fetchedContent;
+            }
+          }
+        })
+        .catch((err) => console.error('Error polling journal entry:', err));
+    }, 2000);
+    return () => clearInterval(pollInterval);
+  }, [committedDate, token, isFocused]);
+  // Note: journalCache is intentionally omitted from dependencies.
+
   const formatDate = (dateStr) => {
     const date = new Date(dateStr + 'T00:00');
-    return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    return date.toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric'
+    });
   };
   const getDayName = (dateStr) => {
     const date = new Date(dateStr + 'T00:00');
     return date.toLocaleDateString('en-US', { weekday: 'long' });
   };
 
-  // Navigation functions.
   const goToPrevMonth = () => {
     const d = new Date(committedDate + 'T00:00');
     d.setMonth(d.getMonth() - 1);
     const newDate = getLocalDateString(d);
     setCommittedDate(newDate);
     setSelectedIndex(0);
-    animate(pageTurnValue, 0, { duration: 0 }); // reset instantly
+    animate(pageTurnValue, 0, { duration: 0 });
     navigate('/journal/' + newDate);
   };
   const goToNextMonth = () => {
@@ -364,10 +459,9 @@ function JournalSection() {
     navigate('/journal/' + today);
   };
   const jumpToCalendar = () => {
-    navigate('/calendar/' + monthDates[selectedIndex]);
+    navigate('/calendar/' + memoizedMonthDates[selectedIndex]);
   };
 
-  // Shared style for journal pages.
   const journalContentStyle = {
     backgroundColor: '#F5ECD9',
     textAlign: 'left',
@@ -377,7 +471,7 @@ function JournalSection() {
     color: defaultColor,
     width: '100%',
     padding: '1rem',
-    border: '2px solid #4B5563', // gray-600
+    border: '2px solid #4B5563',
     borderRadius: '0.375rem',
     margin: '0 auto'
   };
@@ -390,7 +484,10 @@ function JournalSection() {
       <div className="flex justify-center items-center space-x-4 mb-2">
         <Button variant="outlined" onClick={goToPrevMonth}>Prev Month</Button>
         <Typography variant="subtitle1">
-          {new Date(committedDate + 'T00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          {new Date(committedDate + 'T00:00').toLocaleDateString('en-US', {
+            month: 'long',
+            year: 'numeric'
+          })}
         </Typography>
         <Button variant="outlined" onClick={goToNextMonth}>Next Month</Button>
       </div>
@@ -402,18 +499,29 @@ function JournalSection() {
           Go to Calendar for This Day
         </Button>
       </div>
-      {/* Journal content area with real-time page-turn animation */}
-      <div style={{ position: 'relative', height: '500px' }}>
-        {/* Bottom (preview) layer – read–only. Render only if previewDate differs from committedDate */}
+      {/* Wrap the journal area in a container with perspective */}
+      <div
+        style={{
+          position: 'relative',
+          height: '500px',
+          perspective: '1200px',
+          overflow: 'hidden'
+        }}
+      >
         {previewDate !== committedDate && (
           <div
             className="journal-page bottom-page"
-            style={{ ...journalContentStyle, position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
-            // Using dangerouslySetInnerHTML to render HTML content.
+            style={{
+              ...journalContentStyle,
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%'
+            }}
             dangerouslySetInnerHTML={{ __html: journalCache[previewDate] || '' }}
           />
         )}
-        {/* Top (editable) layer – rotates based on drag. */}
         <motion.div
           style={{
             position: 'absolute',
@@ -423,43 +531,50 @@ function JournalSection() {
             height: '100%',
             rotateY: rotateY,
             opacity: pageOpacity,
-            transformOrigin: 'left center'
+            transformOrigin: 'left center',
+            backfaceVisibility: 'hidden',
+            WebkitBackfaceVisibility: 'hidden',
+            transformStyle: 'preserve-3d',
+            backgroundColor: '#F5ECD9',
+            willChange: 'transform, opacity',
+            clipPath: 'inset(0)',
+            transform: 'translateZ(0)'
           }}
         >
           <div
             contentEditable
             ref={contentRef}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
+            onFocus={() => { setIsFocused(true); 
+              document.execCommand('styleWithCSS', false, true);
+              document.execCommand('foreColor', false, currentUser === 'alfredo' ? 'blue' : 'purple'); }}
+            onBlur={handleBlur}
             onInput={handleInput}
+            onKeyDown={handleKeyDown}
             suppressContentEditableWarning={true}
             style={journalContentStyle}
-          >
-            {/* The content is injected via innerHTML in useEffect */}
-          </div>
+          />
         </motion.div>
       </div>
-      {/* Date bar rendered separately (no page-turn animation) */}
       <div className="overflow-hidden mt-2" ref={dateBarRef}>
         <motion.div
           drag="x"
           dragConstraints={{
             left:
-              -(monthDates.length * totalSpace -
+              -(memoizedMonthDates.length * totalSpace -
                 (dateBarRef.current ? dateBarRef.current.clientWidth : 800)),
             right: 0
           }}
           dragElastic={0.2}
           style={{
             x: dragX,
-            width: monthDates.length * totalSpace,
+            width: memoizedMonthDates.length * totalSpace,
             display: 'flex',
             gap: `${buttonGap}px`
           }}
           onDrag={handleDateBarDrag}
           onDragEnd={handleDateBarDragEnd}
         >
-          {monthDates.map((dateStr, i) => (
+          {memoizedMonthDates.map((dateStr, i) => (
             <button
               key={dateStr}
               onClick={() => {
@@ -470,7 +585,6 @@ function JournalSection() {
                   dragX.set(newDragX);
                 }
                 setCommittedDate(dateStr);
-                // Reset page turn instantly.
                 animate(pageTurnValue, 0, { duration: 0 });
                 navigate('/journal/' + dateStr);
               }}
@@ -495,6 +609,7 @@ function JournalSection() {
   CALENDAR SECTION COMPONENT 
   Reads an optional ":date" parameter from the URL.
   The "Go to Journal for This Day" button navigates to /journal/{date}.
+  Calendar entries and the file upload button are centered.
 */
 function CalendarSection() {
   const navigate = useNavigate();
@@ -526,7 +641,7 @@ function CalendarSection() {
           headers: { Authorization: `Bearer ${token}` }
         });
         setEvents(res.data);
-        setCalendarEntry((prev) => ({ ...prev, date: dateStr }));
+        setCalendarEntry(prev => ({ ...prev, date: dateStr }));
       } catch (error) {
         console.error('Error fetching calendar events:', error);
       }
@@ -568,7 +683,7 @@ function CalendarSection() {
         headers: { Authorization: `Bearer ${token}` }
       });
       setEvents(res.data);
-      setCalendarEntry((prev) => ({ ...prev, title: '', description: '' }));
+      setCalendarEntry(prev => ({ ...prev, title: '', description: '' }));
     } catch (error) {
       console.error('Error saving calendar event:', error);
     }
@@ -596,7 +711,7 @@ function CalendarSection() {
       await axios.delete(`http://localhost:5001/api/calendar/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setEvents((prev) => prev.filter((event) => event._id !== id));
+      setEvents(prev => prev.filter((event) => event._id !== id));
     } catch (error) {
       console.error('Error deleting calendar event:', error);
     }
@@ -611,8 +726,9 @@ function CalendarSection() {
           Go to Journal for This Day
         </Button>
       </div>
-      <div className="mb-6 flex justify-center">
-        <Calendar onChange={handleDateChange} value={selectedDate} />
+      {/* Center the Calendar component */}
+      <div className="mb-6" style={{ display: 'flex', justifyContent: 'center' }}>
+        <Calendar onChange={handleDateChange} value={selectedDate} style={{ margin: '0 auto' }}/>
       </div>
       <form onSubmit={handleSubmit} className="mb-4 space-y-4 mx-auto max-w-md">
         <div>
@@ -685,7 +801,7 @@ function CalendarSection() {
 }
 
 /* 
-  GALLERY SECTION COMPONENT (unchanged)
+  GALLERY SECTION COMPONENT (unchanged, with centered file input)
 */
 function GallerySection() {
   const [imageFile, setImageFile] = useState(null);
@@ -739,8 +855,9 @@ function GallerySection() {
   return (
     <div className="text-center text-gray-800">
       <h2 className="text-2xl font-semibold mb-4">Gallery</h2>
+      {/* Wrap the file input in a center-aligned div */}
       <form onSubmit={handleUpload} className="mb-6 space-y-4 mx-auto max-w-md">
-        <div>
+        <div style={{ textAlign: 'center' }}>
           <label className="block mb-1">Image</label>
           <input
             type="file"
