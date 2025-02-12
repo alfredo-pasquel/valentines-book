@@ -53,7 +53,7 @@ function BookCover({ onComplete, mode = 'open' }) {
   };
   return (
     <motion.div
-      className="absolute inset-0 cursor-pointer bg-contain bg-center bg-no-repeat"
+      className="absolute inset-0 cursor-pointer bg-contain bg-top bg-no-repeat"
       style={{
         transformOrigin: 'left center',
         backgroundImage: "url('/book.png')"
