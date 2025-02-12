@@ -770,7 +770,12 @@ function CalendarSection() {
         </button>
       </form>
       {/* Today's events container */}
-      <div className="mb-4 mx-auto" style={{ maxWidth: '350px', maxHeight: '300px', overflowY: 'auto' }}>
+      <div className="mb-4 mx-auto" style={{ 
+        maxWidth: '350px', 
+        maxHeight: '300px', 
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch' 
+        }}>
         {/* Use the helper to format the date */}
         <h3 className="text-xl font-semibold mb-2">Events for {formatCalendarDate(calendarEntry.date)}</h3>
         {events.length === 0 ? (
@@ -801,7 +806,11 @@ function CalendarSection() {
         {monthlyEvents.length === 0 ? (
           <Typography>No events scheduled for this month.</Typography>
         ) : (
-          <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+          <div style={{ 
+            maxHeight: '200px', 
+            overflowY: 'auto',
+            WebkitOverflowScrolling: 'touch' 
+            }}>
             {monthlyEvents.map((event) => (
               <div key={event._id} className="mb-2">
                 <Typography variant="body1">
