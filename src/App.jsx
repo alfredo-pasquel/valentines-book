@@ -106,11 +106,11 @@ export default function App({ onLogout }) {
   }, [onLogout]);
 
   return (
-    <div className="min-h-screen bg-pink-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-purple-100 flex items-start justify-center pt-8 p-4">
       {/* Book container with fixed height */}
       <div
         className="relative w-full max-w-3xl h-[1000px] shadow-xl rounded-lg overflow-hidden"
-        style={{ perspective: '1200px', backgroundColor: '#F5ECD9' }}
+        style={{ perspective: '1200px', backgroundColor: '#E6E6FA' }}
       >
         <AnimatePresence>
           {!isBookOpen && !isClosing && (
@@ -664,12 +664,14 @@ function CalendarSection() {
     }
   };
 
+  // If a date is passed in the URL, update selectedDate.
   useEffect(() => {
     if (params.date) {
       setSelectedDate(new Date(params.date + 'T00:00'));
     }
   }, [params.date]);
 
+  // Fetch events when selectedDate or token change.
   useEffect(() => {
     fetchCalendarEvents();
   }, [selectedDate, token]);
@@ -677,6 +679,12 @@ function CalendarSection() {
   useEffect(() => {
     fetchMonthlyEvents();
   }, [selectedDate, token]);
+
+  // NEW: Force a fetch on initial mount so events are loaded even if selectedDate doesn't change.
+  useEffect(() => {
+    fetchCalendarEvents();
+    fetchMonthlyEvents();
+  }, []);
 
   const handleDateChange = (date) => {
     setSelectedDate(date);
@@ -770,14 +778,10 @@ function CalendarSection() {
         </button>
       </form>
       {/* Today's events container */}
-      <div className="mb-4 mx-auto" style={{ 
-        maxWidth: '350px', 
-        maxHeight: '300px', 
-        overflowY: 'auto',
-        WebkitOverflowScrolling: 'touch' 
-        }}>
-        {/* Use the helper to format the date */}
-        <h3 className="text-xl font-semibold mb-2">Events for {formatCalendarDate(calendarEntry.date)}</h3>
+      <div className="mb-4 mx-auto" style={{ maxWidth: '350px', maxHeight: '300px', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <h3 className="text-xl font-semibold mb-2">
+          Events for {formatCalendarDate(calendarEntry.date)}
+        </h3>
         {events.length === 0 ? (
           <p>No events for this date.</p>
         ) : (
@@ -806,11 +810,7 @@ function CalendarSection() {
         {monthlyEvents.length === 0 ? (
           <Typography>No events scheduled for this month.</Typography>
         ) : (
-          <div style={{ 
-            maxHeight: '200px', 
-            overflowY: 'auto',
-            WebkitOverflowScrolling: 'touch' 
-            }}>
+          <div style={{ maxHeight: '200px', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
             {monthlyEvents.map((event) => (
               <div key={event._id} className="mb-2">
                 <Typography variant="body1">
