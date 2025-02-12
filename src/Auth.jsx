@@ -9,7 +9,7 @@ export function Login({ onLogin }) {
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
-      const res = await axios.post('http://localhost:5001/api/auth/login', { username, password });
+      const res = await axios.post('https://valentines-book-backend.onrender.com/api/auth/login', { username, password });
       // Save both the JWT token and the username in localStorage
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('username', res.data.username);
@@ -72,7 +72,7 @@ export function Register({ onRegister }) {
       return;
     }
     try {
-      const res = await axios.post('http://localhost:5001/api/auth/register', { username, password, pin });
+      const res = await axios.post('https://valentines-book-backend.onrender.com/api/auth/register', { username, password, pin });
       // Save both the JWT token and the username in localStorage
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('username', res.data.username);

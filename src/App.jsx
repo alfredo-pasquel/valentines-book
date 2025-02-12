@@ -263,7 +263,7 @@ function JournalSection() {
   useEffect(() => {
     if (!journalCache[committedDate]) {
       axios
-        .get(`http://localhost:5001/api/journal?date=${committedDate}`, {
+        .get(`https://valentines-book-backend.onrender.com/api/journal?date=${committedDate}`, {
           headers: { Authorization: `Bearer ${token}` }
         })
         .then((res) => {
@@ -279,7 +279,7 @@ function JournalSection() {
       const nextDate = memoizedMonthDates[selectedIndex + 1];
       if (!journalCache[nextDate]) {
         axios
-          .get(`http://localhost:5001/api/journal?date=${nextDate}`, {
+          .get(`https://valentines-book-backend.onrender.com/api/journal?date=${nextDate}`, {
             headers: { Authorization: `Bearer ${token}` }
           })
           .then((res) => {
@@ -391,7 +391,7 @@ function JournalSection() {
       const timer = setTimeout(() => {
         axios
           .post(
-            'http://localhost:5001/api/journal',
+            'https://valentines-book-backend.onrender.com/api/journal',
             { date: committedDate, content: contentToSave },
             { headers: { Authorization: `Bearer ${token}` } }
           )
@@ -408,7 +408,7 @@ function JournalSection() {
   useEffect(() => {
     const pollInterval = setInterval(() => {
       axios
-        .get(`http://localhost:5001/api/journal?date=${committedDate}`, {
+        .get(`https://valentines-book-backend.onrender.com/api/journal?date=${committedDate}`, {
           headers: { Authorization: `Bearer ${token}` }
         })
         .then((res) => {
@@ -642,7 +642,7 @@ function CalendarSection() {
   const fetchCalendarEvents = async () => {
     const dateStr = getLocalDateString(selectedDate);
     try {
-      const res = await axios.get(`http://localhost:5001/api/calendar?date=${dateStr}`, {
+      const res = await axios.get(`https://valentines-book-backend.onrender.com/api/calendar?date=${dateStr}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setEvents(res.data);
@@ -655,7 +655,7 @@ function CalendarSection() {
   const fetchMonthlyEvents = async () => {
     const month = getLocalDateString(selectedDate).slice(0, 7);
     try {
-      const res = await axios.get(`http://localhost:5001/api/calendar/month?month=${month}`, {
+      const res = await axios.get(`https://valentines-book-backend.onrender.com/api/calendar/month?month=${month}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setMonthlyEvents(res.data);
@@ -690,7 +690,7 @@ function CalendarSection() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await axios.post('http://localhost:5001/api/calendar', calendarEntry, {
+      await axios.post('https://valentines-book-backend.onrender.com/api/calendar', calendarEntry, {
         headers: { Authorization: `Bearer ${token}` }
       });
       await fetchCalendarEvents();
@@ -719,7 +719,7 @@ function CalendarSection() {
 
   const deleteEvent = async (id) => {
     try {
-      await axios.delete(`http://localhost:5001/api/calendar/${id}`, {
+      await axios.delete(`https://valentines-book-backend.onrender.com/api/calendar/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       await fetchCalendarEvents();
@@ -835,7 +835,7 @@ function GallerySection() {
   // Helper to fetch images.
   const fetchImages = async () => {
     try {
-      const res = await axios.get('http://localhost:5001/api/gallery', {
+      const res = await axios.get('https://valentines-book-backend.onrender.com/api/gallery', {
         headers: { Authorization: `Bearer ${token}` }
       });
       setImages(res.data);
@@ -859,7 +859,7 @@ function GallerySection() {
     formData.append('image', imageFile);
     formData.append('description', description);
     try {
-      await axios.post('http://localhost:5001/api/gallery/upload', formData, {
+      await axios.post('https://valentines-book-backend.onrender.com/api/gallery/upload', formData, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'multipart/form-data'
@@ -877,7 +877,7 @@ function GallerySection() {
 
   const deleteImage = async (id) => {
     try {
-      await axios.delete(`http://localhost:5001/api/gallery/${id}`, {
+      await axios.delete(`https://valentines-book-backend.onrender.com/api/gallery/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       await fetchImages();
