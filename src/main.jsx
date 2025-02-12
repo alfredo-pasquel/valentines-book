@@ -1,9 +1,10 @@
-// index.jsx (or wherever your Root component is defined)
+// index.jsx
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { Login, Register } from './Auth';
 import './index.css';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 
 function Root() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -23,7 +24,7 @@ function Root() {
     window.location.hash = 'login';
   };
 
-  // Use simple hash routing for demo purposes
+  // Use simple hash routing for demo purposes for login/register.
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#', '');
@@ -43,7 +44,23 @@ function Root() {
     return <Login onLogin={() => setIsAuthenticated(true)} />;
   }
 
+  // If authenticated, we render our App within our routes.
   return <App onLogout={logout} />;
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <BrowserRouter>
+    <Routes>
+      {/* 
+         Define routes for your dynamic pages.
+         For example, both the Journal and Calendar views can accept an optional ":date" parameter.
+      */}
+      <Route path="/login" element={<Root />} />
+      <Route path="/register" element={<Root />} />
+      <Route path="/journal/:date?" element={<Root />} />
+      <Route path="/calendar/:date?" element={<Root />} />
+      {/* Fallback route */}
+      <Route path="/*" element={<Root />} />
+    </Routes>
+  </BrowserRouter>
+);

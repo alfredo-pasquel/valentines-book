@@ -1,49 +1,81 @@
 // App.jsx
-import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useLayoutEffect
+} from 'react';
+import {
+  motion,
+  AnimatePresence,
+  useMotionValue,
+  useTransform,
+  animate
+} from 'framer-motion';
 import Calendar from 'react-calendar';
 import axios from 'axios';
 import 'react-calendar/dist/Calendar.css';
 import './App.css';
 import { Typography, Button } from '@mui/material';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 
 /* 
   Helper: Get local date string in "YYYY-MM-DD" format.
-  This version subtracts the timezone offset so that "today" matches local time.
+  Adjusts for timezone offsets so that the date reflects your local time.
 */
 const getLocalDateString = (date) => {
-  const d = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return d.toISOString().split('T')[0];
+  const offset = date.getTimezoneOffset();
+  const localDate = new Date(date.getTime() - offset * 60 * 1000);
+  return localDate.toISOString().split('T')[0];
 };
 
-// -----------------------
-// BookCover Component
-// -----------------------
-function BookCover({ onOpen }) {
-  const [isAnimating, setIsAnimating] = useState(false);
+/* 
+  BOOK COVER COMPONENT 
+  Animates on open (0° → –150°) and on close (reverse).
+*/
+function BookCover({ onComplete, mode = 'open' }) {
+  const [trigger, setTrigger] = useState(mode === 'open' ? false : true);
+  const handleClick = () => {
+    if (mode === 'open' && !trigger) {
+      setTrigger(true);
+    }
+  };
   return (
     <motion.div
       className="absolute inset-0 cursor-pointer bg-contain bg-center bg-no-repeat"
-      style={{
-        transformOrigin: 'left center',
-        backgroundImage: "url('/book.png')"
-      }}
-      initial={{ rotateY: 0 }}
-      animate={isAnimating ? { rotateY: -150 } : { rotateY: 0 }}
+      style={{ transformOrigin: 'left center', backgroundImage: "url('/book.png')" }}
+      initial={mode === 'open' ? { rotateY: 0 } : { rotateY: -150 }}
+      animate={trigger ? (mode === 'open' ? { rotateY: -150 } : { rotateY: 0 }) : {}}
       transition={{ duration: 1, ease: 'easeInOut' }}
-      onClick={() => { if (!isAnimating) setIsAnimating(true); }}
-      onAnimationComplete={() => { if (isAnimating) onOpen(); }}
+      onClick={handleClick}
+      onAnimationComplete={() => {
+        if (trigger) onComplete();
+      }}
     />
   );
 }
 
-// -----------------------
-// Main App Component
-// -----------------------
+/* 
+  MAIN APP COMPONENT 
+  Uses useLocation to sync the active section with the URL.
+  Hides underlying content when the book is closing.
+*/
 export default function App({ onLogout }) {
   const [isBookOpen, setBookOpen] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
   const [activeSection, setActiveSection] = useState('Journal');
   const sections = ['Journal', 'Calendar', 'Gallery'];
+
+  const location = useLocation();
+  useEffect(() => {
+    if (location.pathname.startsWith('/calendar')) {
+      setActiveSection('Calendar');
+    } else if (location.pathname.startsWith('/journal')) {
+      setActiveSection('Journal');
+    } else if (location.pathname.startsWith('/gallery')) {
+      setActiveSection('Gallery');
+    }
+  }, [location.pathname]);
 
   // Global Axios interceptor for 401 errors.
   useEffect(() => {
@@ -59,37 +91,31 @@ export default function App({ onLogout }) {
     return () => axios.interceptors.response.eject(interceptor);
   }, [onLogout]);
 
-  // Listen for custom "switchSection" events.
-  useEffect(() => {
-    const handleSwitchSection = (e) => {
-      setActiveSection(e.detail);
-    };
-    window.addEventListener('switchSection', handleSwitchSection);
-    return () => window.removeEventListener('switchSection', handleSwitchSection);
-  }, []);
-
   return (
     <div className="min-h-screen bg-pink-100 flex items-center justify-center p-4">
-      {/* Book container with papyrus-like interior */}
+      {/* Book container with fixed height */}
       <div
-        className="relative w-full max-w-3xl h-[800px] shadow-xl rounded-lg overflow-hidden"
+        className="relative w-full max-w-3xl h-[1000px] shadow-xl rounded-lg overflow-hidden"
         style={{ perspective: '1200px', backgroundColor: '#F5ECD9' }}
       >
         <AnimatePresence>
-          {!isBookOpen && <BookCover onOpen={() => setBookOpen(true)} />}
+          {!isBookOpen && !isClosing && (
+            <BookCover onComplete={() => setBookOpen(true)} mode="open" />
+          )}
         </AnimatePresence>
         <AnimatePresence>
           {isBookOpen && (
             <motion.div
-              className="relative p-6 h-full overflow-y-auto"
+              className="relative p-6 h-full overflow-hidden"
+              style={isClosing ? { visibility: 'hidden' } : {}}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0, transition: { duration: 0.5 } }}
-              exit={{ opacity: 0, y: 20 }}
+              exit={{ opacity: 0, y: 20, transition: { duration: 0.5 } }}
             >
               {/* Header with Close and Logout buttons */}
               <div className="flex justify-between items-center">
                 <button
-                  onClick={() => setBookOpen(false)}
+                  onClick={() => setIsClosing(true)}
                   className="text-sm text-gray-500 hover:text-gray-700"
                 >
                   Close
@@ -118,7 +144,7 @@ export default function App({ onLogout }) {
                     </button>
                   ))}
                 </div>
-                <AnimatePresence exitBeforeEnter>
+                <AnimatePresence mode="wait" exitBeforeEnter>
                   <motion.div
                     key={activeSection}
                     initial={{ opacity: 0, x: 20 }}
@@ -134,28 +160,61 @@ export default function App({ onLogout }) {
             </motion.div>
           )}
         </AnimatePresence>
+        {isClosing && (
+          <BookCover
+            mode="close"
+            onComplete={() => {
+              setBookOpen(false);
+              setIsClosing(false);
+            }}
+          />
+        )}
       </div>
     </div>
   );
 }
 
-// -----------------------
-// Journal Section Component
-// -----------------------
+/* 
+  JOURNAL SECTION COMPONENT 
+  • Uses a continuous “page‐turn” animation with two layers:
+      – The bottom layer shows the preview page (read–only).
+      – The top (editable) layer shows the current (committed) page and rotates based on the drag.
+  • This fixes the issue where the page turn only happened after releasing the drag and
+    prevents the text from disappearing in the textbox after a page change.
+*/
 function JournalSection() {
-  // Shared journal entry per day (no title)
+  const navigate = useNavigate();
+  const params = useParams();
+  const token = localStorage.getItem('token');
   const currentUser = localStorage.getItem('username') || 'alfredo';
   const defaultColor = currentUser === 'alfredo' ? 'blue' : 'purple';
-  const [journal, setJournal] = useState({
-    date: getLocalDateString(new Date()),
-    content: ''
-  });
-  const token = localStorage.getItem('token');
-  const autoSaveTimer = useRef(null);
 
-  // Generate dates for the current month only
+  const initialDate = getLocalDateString(new Date());
+  const initialIndex = new Date().getDate() - 1;
+
+  const [committedDate, setCommittedDate] = useState(params.date || initialDate);
+  const [selectedIndex, setSelectedIndex] = useState(
+    params.date ? new Date(params.date + 'T00:00').getDate() - 1 : initialIndex
+  );
+  const [journalCache, setJournalCache] = useState({});
+  // Track focus so we don't update content while the user is editing.
+  const [isFocused, setIsFocused] = useState(false);
+
+  // For the page-turn drag, we now use a motion value.
+  const pageTurnValue = useMotionValue(0);
+  const rotateY = useTransform(pageTurnValue, (v) => v * -90);
+  const pageOpacity = useTransform(pageTurnValue, (v) => 1 - v);
+
+  useEffect(() => {
+    if (params.date) {
+      setCommittedDate(params.date);
+      setSelectedIndex(new Date(params.date + 'T00:00').getDate() - 1);
+    }
+  }, [params.date]);
+
+  // Compute dates for the month.
   const getMonthDates = (dateStr) => {
-    const date = new Date(dateStr);
+    const date = new Date(dateStr + 'T00:00');
     const year = date.getFullYear();
     const month = date.getMonth();
     const dates = [];
@@ -167,172 +226,263 @@ function JournalSection() {
     }
     return dates;
   };
-  const monthDates = getMonthDates(journal.date);
+  const monthDates = getMonthDates(committedDate);
+  // The previewDate (the page underneath) is based on the continuously updated selectedIndex.
+  const previewDate = monthDates[selectedIndex] || committedDate;
 
-  // Header helpers
-  const formatDate = (dateStr) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  };
-  const getDayName = (dateStr) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { weekday: 'long' });
-  };
+  // Refs for date bar and content.
+  const dateBarRef = useRef(null);
+  const dragX = useMotionValue(0);
+  const buttonWidth = 60,
+    buttonGap = 8,
+    totalSpace = buttonWidth + buttonGap;
+  const contentRef = useRef(null);
 
-  // Fetch journal entry for current date
+  useLayoutEffect(() => {
+    if (dateBarRef.current) {
+      const containerWidth = dateBarRef.current.clientWidth;
+      const initialOffset = containerWidth / 2 - (selectedIndex * totalSpace + buttonWidth / 2);
+      dragX.set(initialOffset);
+    }
+  }, [dateBarRef, selectedIndex, totalSpace, buttonWidth]);
+
+  // Fetch content for committedDate if not already cached.
   useEffect(() => {
-    const fetchJournal = async () => {
-      try {
-        const res = await axios.get(`http://localhost:5001/api/journal?date=${journal.date}`, {
+    if (!journalCache[committedDate]) {
+      axios
+        .get(`http://localhost:5001/api/journal?date=${committedDate}`, {
           headers: { Authorization: `Bearer ${token}` }
-        });
-        const fetchedContent = res.data.content || '';
-        setJournal(prev => ({ ...prev, content: fetchedContent }));
-      } catch (error) {
-        console.error('Error fetching journal entry:', error);
+        })
+        .then((res) => {
+          setJournalCache((prev) => ({
+            ...prev,
+            [committedDate]: res.data.content || ''
+          }));
+        })
+        .catch((err) => console.error('Error fetching journal entry:', err));
+    }
+    // Also prefetch the next day's content.
+    if (selectedIndex < monthDates.length - 1) {
+      const nextDate = monthDates[selectedIndex + 1];
+      if (!journalCache[nextDate]) {
+        axios
+          .get(`http://localhost:5001/api/journal?date=${nextDate}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          })
+          .then((res) => {
+            setJournalCache((prev) => ({
+              ...prev,
+              [nextDate]: res.data.content || ''
+            }));
+          })
+          .catch((err) => console.error('Error fetching next journal entry:', err));
       }
-    };
-    fetchJournal();
-  }, [journal.date, token]);
+    }
+  }, [committedDate, selectedIndex, token, journalCache, monthDates]);
 
-  // Listen for "goToJournal" events (e.g., from CalendarSection)
+  // **UPDATED:** When not focused, update the top (editable) page content using committedDate.
   useEffect(() => {
-    const handleGoToJournal = (e) => {
-      setJournal(prev => ({ ...prev, date: e.detail }));
-    };
-    window.addEventListener('goToJournal', handleGoToJournal);
-    return () => window.removeEventListener('goToJournal', handleGoToJournal);
-  }, []);
+    if (contentRef.current && !isFocused) {
+      contentRef.current.innerHTML = journalCache[committedDate] || '';
+    }
+  }, [committedDate, journalCache, isFocused]);
 
-  // Debounced auto-save
-  const autoSave = (newContent) => {
-    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    autoSaveTimer.current = setTimeout(async () => {
-      try {
-        await axios.post('http://localhost:5001/api/journal',
-          { date: journal.date, content: newContent },
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-      } catch (error) {
-        console.error('Error auto-saving journal entry:', error);
-      }
-    }, 1000);
-  };
-
-  const handleInput = (e) => {
-    const newContent = e.target.innerHTML;
-    setJournal(prev => ({ ...prev, content: newContent }));
-    autoSave(newContent);
-  };
-
-  // Draggable horizontal date bar
-  const buttonWidth = 60; // in pixels
-  const buttonGap = 8;    // in pixels
-  const totalSpace = buttonWidth + buttonGap;
-  // Calculate the draggable width for the current month
-  const dragConstraint = { left: -(monthDates.length * totalSpace - 800), right: 0 };
-
-  // onDrag: update journal date continuously as the user drags.
-  const handleDrag = (event, info) => {
-    const offsetX = info.offset.x; // negative if dragged left
-    const indexOffset = Math.round(-offsetX / totalSpace);
-    let newIndex = indexOffset;
-    if (newIndex < 0) newIndex = 0;
-    if (newIndex >= monthDates.length) newIndex = monthDates.length - 1;
-    const newDate = monthDates[newIndex];
-    if (newDate !== journal.date) {
-      setJournal(prev => ({ ...prev, date: newDate }));
+  // Date bar drag: update continuous progress.
+  const handleDateBarDrag = (event, info) => {
+    if (dateBarRef.current) {
+      const containerWidth = dateBarRef.current.clientWidth;
+      const center = containerWidth / 2;
+      const continuous = (center - dragX.get() - buttonWidth / 2) / totalSpace;
+      const intPart = Math.floor(continuous);
+      setSelectedIndex(intPart);
+      // Update the motion value continuously.
+      pageTurnValue.set(continuous - intPart);
     }
   };
 
-  // Month navigation controls
-  const goToPrevMonth = () => {
-    const d = new Date(journal.date);
-    d.setMonth(d.getMonth() - 1);
-    setJournal(prev => ({ ...prev, date: getLocalDateString(d) }));
-  };
-  const goToNextMonth = () => {
-    const d = new Date(journal.date);
-    d.setMonth(d.getMonth() + 1);
-    setJournal(prev => ({ ...prev, date: getLocalDateString(d) }));
-  };
-  const goToToday = () => {
-    setJournal(prev => ({ ...prev, date: getLocalDateString(new Date()) }));
+  // On drag end, decide whether to commit to the next page.
+  const handleDateBarDragEnd = (event, info) => {
+    const currentPageTurn = pageTurnValue.get();
+    let newIndex = selectedIndex;
+    if (currentPageTurn > 0.5 && selectedIndex < monthDates.length - 1) {
+      newIndex = selectedIndex + 1;
+    }
+    if (dateBarRef.current) {
+      const containerWidth = dateBarRef.current.clientWidth;
+      const newOffset = containerWidth / 2 - (newIndex * totalSpace + buttonWidth / 2);
+      animate(dragX, newOffset, { type: 'spring', stiffness: 300, damping: 30 });
+    }
+    // Animate the page turn back to 0.
+    animate(pageTurnValue, 0, { type: 'spring', stiffness: 300, damping: 30 });
+    setCommittedDate(monthDates[newIndex]);
+    setSelectedIndex(newIndex);
+    navigate('/journal/' + monthDates[newIndex]);
   };
 
-  // Button in Journal to jump to the corresponding Calendar entry.
-  const goToCalendar = () => {
-    window.dispatchEvent(new CustomEvent('setCalendarDate', { detail: journal.date }));
-    window.dispatchEvent(new CustomEvent('switchSection', { detail: 'Calendar' }));
+  // When user types, update journalCache.
+  const handleInput = (e) => {
+    const newContent = e.target.innerHTML;
+    // Save the content for the current committed page.
+    setJournalCache((prev) => ({ ...prev, [committedDate]: newContent }));
+    // (Auto-save logic could be added here.)
+  };
+
+  // Formatting helpers.
+  const formatDate = (dateStr) => {
+    const date = new Date(dateStr + 'T00:00');
+    return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  };
+  const getDayName = (dateStr) => {
+    const date = new Date(dateStr + 'T00:00');
+    return date.toLocaleDateString('en-US', { weekday: 'long' });
+  };
+
+  // Navigation functions.
+  const goToPrevMonth = () => {
+    const d = new Date(committedDate + 'T00:00');
+    d.setMonth(d.getMonth() - 1);
+    const newDate = getLocalDateString(d);
+    setCommittedDate(newDate);
+    setSelectedIndex(0);
+    animate(pageTurnValue, 0, { duration: 0 }); // reset instantly
+    navigate('/journal/' + newDate);
+  };
+  const goToNextMonth = () => {
+    const d = new Date(committedDate + 'T00:00');
+    d.setMonth(d.getMonth() + 1);
+    const newDate = getLocalDateString(d);
+    setCommittedDate(newDate);
+    setSelectedIndex(0);
+    animate(pageTurnValue, 0, { duration: 0 });
+    navigate('/journal/' + newDate);
+  };
+  const goToToday = () => {
+    const today = getLocalDateString(new Date());
+    setCommittedDate(today);
+    setSelectedIndex(new Date().getDate() - 1);
+    animate(pageTurnValue, 0, { duration: 0 });
+    navigate('/journal/' + today);
+  };
+  const jumpToCalendar = () => {
+    navigate('/calendar/' + monthDates[selectedIndex]);
+  };
+
+  // Shared style for journal pages.
+  const journalContentStyle = {
+    backgroundColor: '#F5ECD9',
+    textAlign: 'left',
+    fontSize: '1.125rem',
+    height: '500px',
+    overflow: 'hidden',
+    color: defaultColor,
+    width: '100%',
+    padding: '1rem',
+    border: '2px solid #4B5563', // gray-600
+    borderRadius: '0.375rem',
+    margin: '0 auto'
   };
 
   return (
-    <div className="text-center text-gray-800">
+    <div className="text-center text-gray-800 relative" style={{ height: '700px' }}>
       <h2 className="text-2xl font-semibold mb-2">
-        Journal for {formatDate(journal.date)} – {getDayName(journal.date)}
+        Journal for {formatDate(committedDate)} – {getDayName(committedDate)}
       </h2>
-      {/* Month navigation controls */}
       <div className="flex justify-center items-center space-x-4 mb-2">
         <Button variant="outlined" onClick={goToPrevMonth}>Prev Month</Button>
         <Typography variant="subtitle1">
-          {new Date(journal.date).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          {new Date(committedDate + 'T00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
         </Typography>
         <Button variant="outlined" onClick={goToNextMonth}>Next Month</Button>
       </div>
-      {/* Today button */}
       <div className="mb-2">
         <Button variant="contained" color="success" onClick={goToToday}>Today</Button>
       </div>
-      {/* "Go to Calendar" button */}
       <div className="mb-2">
-        <Button variant="contained" color="primary" onClick={goToCalendar}>
+        <Button variant="contained" color="primary" onClick={jumpToCalendar}>
           Go to Calendar for This Day
         </Button>
       </div>
-      {/* Animated content area with thicker border for page-turn effect */}
-      <AnimatePresence exitBeforeEnter>
+      {/* Journal content area with real-time page-turn animation */}
+      <div style={{ position: 'relative', height: '500px' }}>
+        {/* Bottom (preview) layer – read–only. Render only if previewDate differs from committedDate */}
+        {previewDate !== committedDate && (
+          <div
+            className="journal-page bottom-page"
+            style={{ ...journalContentStyle, position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
+            // Using dangerouslySetInnerHTML to render HTML content.
+            dangerouslySetInnerHTML={{ __html: journalCache[previewDate] || '' }}
+          />
+        )}
+        {/* Top (editable) layer – rotates based on drag. */}
         <motion.div
-          key={journal.date}
-          initial={{ opacity: 0, rotateY: 90 }}
-          animate={{ opacity: 1, rotateY: 0, transition: { duration: 0.5 } }}
-          exit={{ opacity: 0, rotateY: -90, transition: { duration: 0.5 } }}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            rotateY: rotateY,
+            opacity: pageOpacity,
+            transformOrigin: 'left center'
+          }}
         >
           <div
             contentEditable
+            ref={contentRef}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
             onInput={handleInput}
-            className="w-full p-4 border-2 border-gray-600 rounded overflow-y-auto focus:outline-none mx-auto"
-            style={{
-              backgroundColor: '#F5ECD9',
-              textAlign: 'left',
-              fontSize: '1.125rem',
-              height: '40vh',
-              color: defaultColor
-            }}
-          />
+            suppressContentEditableWarning={true}
+            style={journalContentStyle}
+          >
+            {/* The content is injected via innerHTML in useEffect */}
+          </div>
         </motion.div>
-      </AnimatePresence>
-      {/* Draggable horizontal date bar (without native scrollbar) */}
-      <div className="mt-4 overflow-hidden" style={{ width: '100%' }}>
+      </div>
+      {/* Date bar rendered separately (no page-turn animation) */}
+      <div className="overflow-hidden mt-2" ref={dateBarRef}>
         <motion.div
           drag="x"
-          dragConstraints={dragConstraint}
+          dragConstraints={{
+            left:
+              -(monthDates.length * totalSpace -
+                (dateBarRef.current ? dateBarRef.current.clientWidth : 800)),
+            right: 0
+          }}
           dragElastic={0.2}
-          onDrag={handleDrag}
-          className="flex space-x-2"
-          style={{ width: monthDates.length * totalSpace }}
+          style={{
+            x: dragX,
+            width: monthDates.length * totalSpace,
+            display: 'flex',
+            gap: `${buttonGap}px`
+          }}
+          onDrag={handleDateBarDrag}
+          onDragEnd={handleDateBarDragEnd}
         >
-          {monthDates.map((dateStr) => (
+          {monthDates.map((dateStr, i) => (
             <button
               key={dateStr}
-              onClick={() => setJournal(prev => ({ ...prev, date: dateStr }))}
+              onClick={() => {
+                setSelectedIndex(i);
+                if (dateBarRef.current) {
+                  const containerWidth = dateBarRef.current.clientWidth;
+                  const newDragX = containerWidth / 2 - (i * totalSpace + buttonWidth / 2);
+                  dragX.set(newDragX);
+                }
+                setCommittedDate(dateStr);
+                // Reset page turn instantly.
+                animate(pageTurnValue, 0, { duration: 0 });
+                navigate('/journal/' + dateStr);
+              }}
               className={`px-3 py-1 rounded ${
-                dateStr === journal.date
-                  ? 'bg-pink-500 text-white'
-                  : 'bg-gray-200 text-gray-700'
+                i === selectedIndex ? 'bg-pink-500 text-white' : 'bg-gray-200 text-gray-700'
               }`}
               style={{ minWidth: buttonWidth }}
             >
-              {new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              {new Date(dateStr + 'T00:00').toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric'
+              })}
             </button>
           ))}
         </motion.div>
@@ -341,11 +491,18 @@ function JournalSection() {
   );
 }
 
-// -----------------------
-// Calendar Section Component
-// -----------------------
+/* 
+  CALENDAR SECTION COMPONENT 
+  Reads an optional ":date" parameter from the URL.
+  The "Go to Journal for This Day" button navigates to /journal/{date}.
+*/
 function CalendarSection() {
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const navigate = useNavigate();
+  const params = useParams();
+
+  const [selectedDate, setSelectedDate] = useState(
+    params.date ? new Date(params.date + 'T00:00') : new Date()
+  );
   const [calendarEntry, setCalendarEntry] = useState({
     title: '',
     description: '',
@@ -356,6 +513,12 @@ function CalendarSection() {
   const token = localStorage.getItem('token');
 
   useEffect(() => {
+    if (params.date) {
+      setSelectedDate(new Date(params.date + 'T00:00'));
+    }
+  }, [params.date]);
+
+  useEffect(() => {
     const fetchEvents = async () => {
       try {
         const dateStr = getLocalDateString(selectedDate);
@@ -363,7 +526,7 @@ function CalendarSection() {
           headers: { Authorization: `Bearer ${token}` }
         });
         setEvents(res.data);
-        setCalendarEntry(prev => ({ ...prev, date: dateStr }));
+        setCalendarEntry((prev) => ({ ...prev, date: dateStr }));
       } catch (error) {
         console.error('Error fetching calendar events:', error);
       }
@@ -388,6 +551,7 @@ function CalendarSection() {
 
   const handleDateChange = (date) => {
     setSelectedDate(date);
+    navigate('/calendar/' + getLocalDateString(date));
   };
 
   const handleChange = (e) => {
@@ -404,34 +568,53 @@ function CalendarSection() {
         headers: { Authorization: `Bearer ${token}` }
       });
       setEvents(res.data);
-      setCalendarEntry(prev => ({ ...prev, title: '', description: '' }));
+      setCalendarEntry((prev) => ({ ...prev, title: '', description: '' }));
     } catch (error) {
       console.error('Error saving calendar event:', error);
     }
   };
 
-  // Listen for "setCalendarDate" events from JournalSection.
   useEffect(() => {
     const handleSetCalendarDate = (e) => {
-      setSelectedDate(new Date(e.detail));
+      const parts = e.detail.split('-');
+      const localDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+      setSelectedDate(localDate);
+      navigate('/calendar/' + getLocalDateString(localDate));
     };
     window.addEventListener('setCalendarDate', handleSetCalendarDate);
     return () => window.removeEventListener('setCalendarDate', handleSetCalendarDate);
-  }, []);
+  }, [navigate]);
 
-  // "Go to Journal" button
+  // "Go to Journal" button navigates to /journal/{selectedDate}
   const goToJournal = () => {
-    window.dispatchEvent(new CustomEvent('goToJournal', { detail: calendarEntry.date }));
-    window.dispatchEvent(new CustomEvent('switchSection', { detail: 'Journal' }));
+    const journalDate = getLocalDateString(selectedDate);
+    navigate('/journal/' + journalDate);
+  };
+
+  const deleteEvent = async (id) => {
+    try {
+      await axios.delete(`http://localhost:5001/api/calendar/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setEvents((prev) => prev.filter((event) => event._id !== id));
+    } catch (error) {
+      console.error('Error deleting calendar event:', error);
+    }
   };
 
   return (
-    <div className="text-center text-gray-800">
-      <h2 className="text-2xl font-semibold mb-4">Calendar</h2>
+    <div className="text-center text-gray-800 h-full overflow-hidden">
+      <h2 className="text-2xl font-semibold mb-2">Calendar</h2>
+      {/* Jump-to-Journal button */}
+      <div className="mb-4">
+        <Button variant="contained" color="primary" onClick={goToJournal}>
+          Go to Journal for This Day
+        </Button>
+      </div>
       <div className="mb-6 flex justify-center">
         <Calendar onChange={handleDateChange} value={selectedDate} />
       </div>
-      <form onSubmit={handleSubmit} className="mb-6 space-y-4 mx-auto max-w-md">
+      <form onSubmit={handleSubmit} className="mb-4 space-y-4 mx-auto max-w-md">
         <div>
           <label className="block mb-1">Event Title</label>
           <input
@@ -457,20 +640,29 @@ function CalendarSection() {
           Save Calendar Event
         </button>
       </form>
-      <div className="mb-6">
+      <div className="mb-4">
         <h3 className="text-xl font-semibold mb-2">Events for {calendarEntry.date}</h3>
         {events.length === 0 ? (
           <p>No events for this date.</p>
         ) : (
           events.map((event) => (
-            <div key={event._id} className="mb-4 p-4 border border-gray-200 rounded">
-              <h4 className="font-bold">{event.title}</h4>
-              <p>{event.description}</p>
+            <div key={event._id} className="mb-4 p-4 border border-gray-200 rounded flex justify-between items-start">
+              <div>
+                <h4 className="font-bold">{event.title}</h4>
+                <p>{event.description}</p>
+              </div>
+              <button
+                onClick={() => deleteEvent(event._id)}
+                className="text-red-500 ml-4 font-bold"
+                title="Delete event"
+              >
+                ×
+              </button>
             </div>
           ))
         )}
       </div>
-      <div className="mt-6">
+      <div className="mb-4">
         <Typography variant="h6" component="h3">
           Upcoming Events This Month
         </Typography>
@@ -488,18 +680,13 @@ function CalendarSection() {
           </div>
         )}
       </div>
-      <div className="mt-4">
-        <Button variant="contained" color="success" onClick={goToJournal}>
-          Go to Journal for This Day
-        </Button>
-      </div>
     </div>
   );
 }
 
-// -----------------------
-// Gallery Section Component with Zoom Functionality
-// -----------------------
+/* 
+  GALLERY SECTION COMPONENT (unchanged)
+*/
 function GallerySection() {
   const [imageFile, setImageFile] = useState(null);
   const [description, setDescription] = useState('');
