@@ -21,7 +21,7 @@ export function Login({ onLogin }) {
   };
 
   return (
-    <div className="min-h-screen bg-pink-100 flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-pink-100 flex flex-col items-center justify-top p-4">
       <form onSubmit={handleLogin} className="bg-white p-8 rounded shadow-lg w-full max-w-md">
         <h2 className="text-2xl font-bold mb-4">Login</h2>
         {error && <p className="text-red-500 mb-2">{error}</p>}
